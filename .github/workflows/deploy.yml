@@ -2,17 +2,14 @@ name: Build and Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
+  workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 concurrency:
   group: "pages"
   cancel-in-progress: false
@@ -32,62 +29,202 @@ jobs:
         cache: 'npm'
 
     - name: Install dependencies
-      run: npm ci
+      run: npm install
 
-    - name: Build application
+    - name: Create simple build script
       run: |
-        # If you have a build script, run it here
-        # npm run build
-        
-        # Copy public assets to dist folder
-        mkdir -p dist
-        
-        # Copy static files (views, public folder, etc.)
-        if [ -d "public" ]; then
-          cp -r public/* dist/
-        fi
-        
-        if [ -d "views" ]; then
-          cp -r views/* dist/
-        fi
-        
-        # If you have specific HTML files, copy them
-        if [ -f "index.html" ]; then
-          cp index.html dist/
-        fi
-        
-        # Bundle your app into a single HTML file with inline JS/CSS
-        # This is a simple approach - you might need to customize this
-        node -e "
+        cat > simple-build.js << 'EOF'
         const fs = require('fs');
         const path = require('path');
-        
-        // Read your main files and create a bundled HTML
-        let html = '<!DOCTYPE html><html><head><title>Public Private Key Demo</title>';
-        
-        // Add any CSS files inline
-        if (fs.existsSync('public/stylesheets/style.css')) {
-          const css = fs.readFileSync('public/stylesheets/style.css', 'utf8');
-          html += '<style>' + css + '</style>';
+
+        // Create dist directory
+        const distDir = './dist';
+        if (fs.existsSync(distDir)) {
+          fs.rmSync(distDir, { recursive: true });
         }
-        
-        html += '</head><body>';
-        
-        // Add your main content here - you'll need to adapt this to your app structure
-        // This is a placeholder - you'll need to modify based on your actual app
-        html += '<div id=\"app\">Loading...</div>';
-        
-        // Add any JavaScript files inline
-        if (fs.existsSync('public/javascripts/app.js')) {
-          const js = fs.readFileSync('public/javascripts/app.js', 'utf8');
-          html += '<script>' + js + '</script>';
+        fs.mkdirSync(distDir, { recursive: true });
+
+        // Copy public directory if it exists
+        if (fs.existsSync('./public')) {
+          const copyRecursive = (src, dest) => {
+            const items = fs.readdirSync(src);
+            for (const item of items) {
+              const srcPath = path.join(src, item);
+              const destPath = path.join(dest, item);
+              if (fs.statSync(srcPath).isDirectory()) {
+                fs.mkdirSync(destPath, { recursive: true });
+                copyRecursive(srcPath, destPath);
+              } else {
+                fs.copyFileSync(srcPath, destPath);
+              }
+            }
+          };
+          copyRecursive('./public', distDir);
         }
+
+        // Create index.html with the crypto demo
+        const html = `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Public Private Key Demo</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+                .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                h1 { text-align: center; color: #333; margin-bottom: 30px; }
+                .section { margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; }
+                .key-pair { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+                .key-box { flex: 1; min-width: 300px; }
+                label { font-weight: bold; display: block; margin-bottom: 8px; color: #555; }
+                textarea { width: 100%; height: 100px; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+                input[type="text"] { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-family: monospace; box-sizing: border-box; }
+                button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px 5px; }
+                button:hover { background: #0056b3; }
+                .result { margin-top: 15px; padding: 15px; border-radius: 5px; font-weight: bold; }
+                .valid { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+                .invalid { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+                .description { background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; color: #6c757d; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Public / Private Key Cryptography Demo</h1>
+                
+                <div class="description">
+                    This demo illustrates the concepts behind public-key cryptography. Generate a key pair, 
+                    sign a message with your private key, and verify the signature with your public key. 
+                    This is a simplified educational example of how digital signatures work in blockchain technology.
+                </div>
+                
+                <div class="section">
+                    <h2>Step 1: Generate Key Pair</h2>
+                    <button onclick="generateKeys()">Generate New Key Pair</button>
+                    <button onclick="clearAll()">Clear All</button>
+                    <div class="key-pair">
+                        <div class="key-box">
+                            <label>Private Key (Keep Secret!):</label>
+                            <textarea id="privateKey" readonly placeholder="Your private key will appear here..."></textarea>
+                        </div>
+                        <div class="key-box">
+                            <label>Public Key (Share Freely):</label>
+                            <textarea id="publicKey" readonly placeholder="Your public key will appear here..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Step 2: Sign Message</h2>
+                    <label>Message to Sign:</label>
+                    <input type="text" id="message" value="Hello, Blockchain!" placeholder="Enter message to sign">
+                    <button onclick="signMessage()">Sign Message</button>
+                    <label>Digital Signature:</label>
+                    <textarea id="signature" readonly placeholder="Signature will appear here..."></textarea>
+                </div>
+                
+                <div class="section">
+                    <h2>Step 3: Verify Signature</h2>
+                    <label>Message:</label>
+                    <input type="text" id="verifyMessage" placeholder="Message to verify">
+                    <label>Signature:</label>
+                    <textarea id="verifySignature" placeholder="Signature to verify"></textarea>
+                    <label>Public Key:</label>
+                    <textarea id="verifyPublicKey" placeholder="Public key to verify with"></textarea>
+                    <button onclick="verifySignature()">Verify Signature</button>
+                    <div id="verificationResult"></div>
+                </div>
+            </div>
+
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+            <script>
+                let keyPair = null;
+                
+                function generateKeys() {
+                    // Generate a random private key
+                    const privateKey = CryptoJS.lib.WordArray.random(32).toString();
+                    // Derive public key from private key (simplified)
+                    const publicKey = CryptoJS.SHA256(privateKey + "public").toString();
+                    
+                    keyPair = { privateKey, publicKey };
+                    
+                    document.getElementById('privateKey').value = privateKey;
+                    document.getElementById('publicKey').value = publicKey;
+                    document.getElementById('verifyPublicKey').value = publicKey;
+                    
+                    // Clear previous results
+                    document.getElementById('signature').value = '';
+                    document.getElementById('verificationResult').innerHTML = '';
+                }
+                
+                function signMessage() {
+                    const message = document.getElementById('message').value;
+                    if (!keyPair || !message) {
+                        alert('Please generate keys and enter a message first');
+                        return;
+                    }
+                    
+                    // Create signature by hashing message with private key
+                    const signature = CryptoJS.HmacSHA256(message, keyPair.privateKey).toString();
+                    document.getElementById('signature').value = signature;
+                    
+                    // Auto-fill verification fields
+                    document.getElementById('verifyMessage').value = message;
+                    document.getElementById('verifySignature').value = signature;
+                    document.getElementById('verificationResult').innerHTML = '';
+                }
+                
+                function verifySignature() {
+                    const message = document.getElementById('verifyMessage').value;
+                    const signature = document.getElementById('verifySignature').value;
+                    const publicKey = document.getElementById('verifyPublicKey').value;
+                    
+                    if (!message || !signature || !publicKey) {
+                        alert('Please fill in all verification fields');
+                        return;
+                    }
+                    
+                    // Verify signature
+                    let isValid = false;
+                    if (keyPair && keyPair.publicKey === publicKey) {
+                        const expectedSignature = CryptoJS.HmacSHA256(message, keyPair.privateKey).toString();
+                        isValid = signature === expectedSignature;
+                    }
+                    
+                    const resultDiv = document.getElementById('verificationResult');
+                    
+                    if (isValid) {
+                        resultDiv.innerHTML = '<div class="result valid">✓ Signature is VALID - The message was signed by the holder of the private key!</div>';
+                    } else {
+                        resultDiv.innerHTML = '<div class="result invalid">✗ Signature is INVALID - The message was NOT signed by the holder of this private key!</div>';
+                    }
+                }
+                
+                function clearAll() {
+                    keyPair = null;
+                    document.getElementById('privateKey').value = '';
+                    document.getElementById('publicKey').value = '';
+                    document.getElementById('message').value = 'Hello, Blockchain!';
+                    document.getElementById('signature').value = '';
+                    document.getElementById('verifyMessage').value = '';
+                    document.getElementById('verifySignature').value = '';
+                    document.getElementById('verifyPublicKey').value = '';
+                    document.getElementById('verificationResult').innerHTML = '';
+                }
+                
+                // Auto-generate keys on page load
+                window.onload = function() {
+                    generateKeys();
+                };
+            </script>
+        </body>
+        </html>`;
         
-        html += '</body></html>';
-        
-        fs.writeFileSync('dist/index.html', html);
-        console.log('Built application successfully');
-        "
+        fs.writeFileSync(path.join(distDir, 'index.html'), html);
+        console.log('Static site built successfully!');
+        EOF
+
+    - name: Build static site
+      run: node simple-build.js
 
     - name: Setup Pages
       uses: actions/configure-pages@v4
