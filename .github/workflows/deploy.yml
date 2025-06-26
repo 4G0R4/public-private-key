@@ -1,0 +1,109 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build application
+      run: |
+        # If you have a build script, run it here
+        # npm run build
+        
+        # Copy public assets to dist folder
+        mkdir -p dist
+        
+        # Copy static files (views, public folder, etc.)
+        if [ -d "public" ]; then
+          cp -r public/* dist/
+        fi
+        
+        if [ -d "views" ]; then
+          cp -r views/* dist/
+        fi
+        
+        # If you have specific HTML files, copy them
+        if [ -f "index.html" ]; then
+          cp index.html dist/
+        fi
+        
+        # Bundle your app into a single HTML file with inline JS/CSS
+        # This is a simple approach - you might need to customize this
+        node -e "
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read your main files and create a bundled HTML
+        let html = '<!DOCTYPE html><html><head><title>Public Private Key Demo</title>';
+        
+        // Add any CSS files inline
+        if (fs.existsSync('public/stylesheets/style.css')) {
+          const css = fs.readFileSync('public/stylesheets/style.css', 'utf8');
+          html += '<style>' + css + '</style>';
+        }
+        
+        html += '</head><body>';
+        
+        // Add your main content here - you'll need to adapt this to your app structure
+        // This is a placeholder - you'll need to modify based on your actual app
+        html += '<div id=\"app\">Loading...</div>';
+        
+        // Add any JavaScript files inline
+        if (fs.existsSync('public/javascripts/app.js')) {
+          const js = fs.readFileSync('public/javascripts/app.js', 'utf8');
+          html += '<script>' + js + '</script>';
+        }
+        
+        html += '</body></html>';
+        
+        fs.writeFileSync('dist/index.html', html);
+        console.log('Built application successfully');
+        "
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './dist'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
